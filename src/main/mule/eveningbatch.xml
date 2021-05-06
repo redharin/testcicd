@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd">
+    <http:listener-config name="eveningbatch-httpListenerConfig">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+    <apikit:config name="eveningbatch-config" api="resource::f3d3a3f8-3dd2-4b7a-974d-ae1b501ed75b:eveningbatch:1.0.0:raml:zip:eveningbatch.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+    <db:config name="Database_Config" doc:name="Database Config" doc:id="e3f11793-aaf5-4e86-a282-4804e2048816" >
+		<db:my-sql-connection host="database-1.cmns26tixyxa.us-east-1.rds.amazonaws.com" port="3306" user="root" password="root1234" database="customer_db">
+			<db:connection-properties >
+				<db:connection-property key="useSSL" value="false" />
+			</db:connection-properties>
+		</db:my-sql-connection>
+	</db:config>
+	<api-gateway:autodiscovery apiId="16837732" ignoreBasePath="true" doc:name="API Autodiscovery" doc:id="20b525be-9d36-4345-80db-e422da620b86" flowRef="eveningbatch-main" />
+	<flow name="eveningbatch-main">
+        <http:listener config-ref="eveningbatch-httpListenerConfig" path="/api/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:router config-ref="eveningbatch-config" />
+    </flow>
+    <flow name="delete:\deleteCustomer:application\json:eveningbatch-config">
+        <logger level="INFO" doc:name="Logger" doc:id="23695043-87b4-47ed-bdf7-eddac2514e88" message="Message received"/>
+		<db:delete doc:name="Delete" doc:id="ed5371d0-1976-42d4-b346-e97960f396ef" config-ref="Database_Config">
+			<db:sql ><![CDATA[delete from customer_tbl where id = :customerId	]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	customerId : payload.id
+}]]]></db:input-parameters>
+		</db:delete>
+		<ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  Message: "Customer account deleted successfully"
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="a92e5ff8-b906-4970-9067-3cbb39a330cf" message="#[payload]"/>
+    </flow>
+    <flow name="get:\getAllCustomers:eveningbatch-config">
+        <logger level="INFO" doc:name="Copy_of_Logger" doc:id="730bc14f-54a3-4fc6-8366-3f00e8950e4d" message="Message received" />
+		<db:select doc:name="Select" doc:id="b5b0fbb4-1ce8-4cdd-b52f-e3db99293997" config-ref="Database_Config">
+			<db:sql ><![CDATA[select * from customer_tbl]]></db:sql>
+		</db:select>
+		<ee:transform doc:name="Transform Message" doc:id="5253d959-8b04-419d-ba49-b44bf57b94ca" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Copy_of_Logger" doc:id="5e46834c-7522-4923-b292-e291b116aa98" message="#[payload]" />
+    </flow>
+    <flow name="get:\getCustomerByid:eveningbatch-config">
+        <logger level="INFO" doc:name="Copy_of_Copy_of_Logger" doc:id="9b28785d-41f6-4731-b8e9-8822fd1824c3" message="Message received" />
+		<db:select doc:name="Select" doc:id="e2abc603-4ba0-459f-a3ad-ee47862b5811" config-ref="Database_Config">
+			<db:sql ><![CDATA[select * from customer_tbl where id = :customerId]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	customerId : attributes.queryParams.customerId
+}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="Choice" doc:id="9473fc90-25b6-4ebd-a14d-289e1a249a7a" >
+			<when expression="#[sizeOf(payload) &gt; 0]">
+				<ee:transform doc:name="Transform Message" doc:id="679694c7-95ea-41d1-8f11-dad6372c5491">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="a1d5c5a7-6dac-45ee-92b8-ca93eff72d76" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"Message" : "Hello, for the requested customer id there is no data exists."
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Copy_of_Logger" doc:id="32bb6eb6-7f59-4ad0-a2d5-89e650e95095" message="#[payload]" />
+    </flow>
+    <flow name="post:\createCustomer:application\json:eveningbatch-config">
+		<logger level="INFO" doc:name="Copy_of_Copy_of_Logger" doc:id="c872c2b1-6ab3-4a5d-bc27-93a92207bdeb" message="Message received with payload : #[payload]" />
+		<db:insert doc:id="0e30aba0-3905-49cc-914d-1cc9c446138f" config-ref="Database_Config">
+			<db:sql ><![CDATA[insert into customer_tbl (name,email,address,telephone) values (:name,:email,:address,:telephone)]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	name : payload.name,
+	email : payload.email,
+	address : payload.address,
+	telephone : payload.telephone
+}]]]></db:input-parameters>
+		</db:insert>
+		<ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  Message: "Successfully created customer data"
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+		<logger level="INFO" doc:name="Copy_of_Copy_of_Logger" doc:id="45e59c66-c4dd-4d8e-b3d2-aabc6d4deecd" message="#[payload]" />
+    </flow>
+</mule>
